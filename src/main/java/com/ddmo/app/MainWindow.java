@@ -12,9 +12,14 @@ import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
+import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import netscape.javascript.JSObject;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.util.Base64;
 
 /**
  * JavaFX 无边框窗口，内嵌 WebView 加载 Vue SPA。
@@ -193,6 +198,43 @@ public class MainWindow extends Application {
         /** 获取最大化状态 */
         public boolean isMaximized() {
             return primaryStage.isMaximized();
+        }
+
+        /**
+         * 保存前端传入的 Base64 文件内容到本地。
+         *
+         * @param suggestedName 建议文件名（如 customers.csv）
+         * @param base64Data    文件内容的 Base64 字符串（不带 data: 前缀）
+         * @return 保存是否成功（用户取消或异常均返回 false）
+         */
+        public boolean saveFile(String suggestedName, String base64Data) {
+            if (base64Data == null || base64Data.isBlank()) {
+                return false;
+            }
+            try {
+                String fileName = (suggestedName == null || suggestedName.isBlank()) ? "export.csv" : suggestedName.trim();
+                FileChooser chooser = new FileChooser();
+                chooser.setTitle("保存导出文件");
+                chooser.setInitialFileName(fileName);
+                chooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("CSV 文件 (*.csv)", "*.csv"));
+
+                java.io.File file = chooser.showSaveDialog(primaryStage);
+                if (file == null) {
+                    return false;
+                }
+
+                String cleanBase64 = base64Data;
+                int comma = cleanBase64.indexOf(',');
+                if (comma >= 0) {
+                    cleanBase64 = cleanBase64.substring(comma + 1);
+                }
+
+                byte[] bytes = Base64.getDecoder().decode(cleanBase64);
+                Files.write(file.toPath(), bytes);
+                return true;
+            } catch (IllegalArgumentException | IOException ex) {
+                return false;
+            }
         }
     }
 }

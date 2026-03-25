@@ -1030,11 +1030,36 @@ async function downloadWithAuth(url, filename) {
     throw new Error('导出失败')
   }
   const blob = await res.blob()
+
+  // EXE(JavaFX WebView) 环境：通过 Java Bridge 调起保存对话框
+  if (window.ddmo && typeof window.ddmo.saveFile === 'function') {
+    const base64 = await blobToBase64(blob)
+    const ok = window.ddmo.saveFile(filename, base64)
+    if (!ok) {
+      throw new Error('导出已取消或保存失败')
+    }
+    return
+  }
+
+  // 浏览器环境：走原生下载
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = filename
   link.click()
   URL.revokeObjectURL(link.href)
+}
+
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = String(reader.result || '')
+      const idx = result.indexOf(',')
+      resolve(idx >= 0 ? result.substring(idx + 1) : result)
+    }
+    reader.onerror = () => reject(new Error('导出文件编码失败'))
+    reader.readAsDataURL(blob)
+  })
 }
 
 async function exportCustomers() {
