@@ -37,7 +37,7 @@
         </div>
       </header>
 
-      <section class="stats-section">
+      <section v-if="activeNav === 'dashboard' || activeNav === 'reports'" class="stats-section">
         <div class="stat-card">
           <div class="stat-value">{{ summary.activeCustomers || 0 }}</div>
           <div class="stat-label">活跃会员</div>
@@ -97,7 +97,7 @@
         </div>
       </section>
 
-      <section v-if="activeNav === 'customers'" class="content-grid list-section">
+      <section v-if="activeNav === 'customers'" class="content-grid list-section customers-section">
         <div class="card">
           <h3 class="card-title">{{ customerForm.id ? '编辑会员' : '新增会员' }}</h3>
           <div class="form-grid">
@@ -115,8 +115,19 @@
         </div>
         <div class="card list-card">
           <h3 class="card-title">会员列表</h3>
+          <div class="list-filter-row">
+            <input v-model.trim="customerListKeyword" placeholder="按会员姓名/手机号搜索" />
+          </div>
           <div class="table-wrap">
-            <table>
+            <table class="customer-table">
+              <colgroup>
+                <col style="width: 16%" />
+                <col style="width: 20%" />
+                <col style="width: 12%" />
+                <col style="width: 12%" />
+                <col style="width: 16%" />
+                <col style="width: 24%" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>姓名</th>
@@ -131,7 +142,11 @@
                 <tr v-for="c in customers" :key="c.id">
                   <td>{{ c.name }}</td>
                   <td>{{ c.phone }}</td>
-                  <td>{{ c.verifyCode }}</td>
+                  <td>
+                    <button class="text-btn" @click="toggleVerifyCode(c.id)">
+                      {{ customerVerifyVisible[c.id] ? c.verifyCode : '****' }}
+                    </button>
+                  </td>
                   <td>{{ c.status === 'active' ? '正常' : '停用' }}</td>
                   <td>{{ money(balanceMap[c.id]) }}</td>
                   <td>
@@ -232,7 +247,7 @@
               />
               <div v-if="consumeDropdownOpen" class="combo-menu">
                 <div v-for="c in consumeCandidateCustomers" :key="c.id" class="combo-item" @mousedown.prevent="selectConsumeCustomer(c)">
-                  {{ c.name }} / {{ c.phone }} / 余额 {{ money(balanceMap[c.id]) }}
+                  {{ c.name }} / {{ c.phone }} / 余额 {{ balanceMap[c.id] == null ? '--' : money(balanceMap[c.id]) }}
                 </div>
                 <div v-if="!consumeCandidateCustomers.length" class="combo-empty">无匹配会员</div>
               </div>
@@ -258,7 +273,14 @@
         <div class="card full list-card">
           <h3 class="card-title">交易流水</h3>
           <div class="table-wrap">
-            <table>
+            <table class="transaction-table">
+              <colgroup>
+                <col style="width: 22%" />
+                <col style="width: 12%" />
+                <col style="width: 16%" />
+                <col style="width: 14%" />
+                <col style="width: 36%" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>时间</th>
@@ -372,10 +394,16 @@
         </div>
       </section>
 
-      <section v-if="activeNav === 'audit'" class="card list-card">
+      <section v-if="activeNav === 'audit'" class="card list-card audit-section">
         <h3 class="card-title">审计日志</h3>
         <div class="table-wrap">
-          <table>
+          <table class="audit-table">
+            <colgroup>
+              <col style="width: 22%" />
+              <col style="width: 16%" />
+              <col style="width: 16%" />
+              <col style="width: 46%" />
+            </colgroup>
             <thead>
               <tr>
                 <th>时间</th>
@@ -448,6 +476,13 @@
 
       <section v-if="activeNav === 'help'" class="card help-card">
         <h3 class="card-title">使用帮助</h3>
+        <div v-if="accessInfo.url" class="help-access-tip">
+          <div class="help-access-title">友情提示</div>
+          <div class="help-access-desc">
+            当前服务地址：<strong>{{ accessInfo.ip }}:{{ accessInfo.port }}</strong>，可在浏览器打开
+            <code>{{ accessInfo.url }}</code> 访问 Web 页面。
+          </div>
+        </div>
         <div class="help-wrap">
           <div class="help-item">
             <h4>1. 添加客户（会员）</h4>
@@ -530,6 +565,7 @@ const currentQuote = ref('把每一次服务做到位，财富会按时来敲门
 const luckyMessage = ref('今日宜稳扎稳打，客单自然上涨。')
 const luckyAnimating = ref(false)
 const autoVerifyCode = ref('')
+const customerListKeyword = ref('')
 const rechargeMemberKeyword = ref('')
 const consumeMemberKeyword = ref('')
 const rechargeDropdownOpen = ref(false)
@@ -537,6 +573,7 @@ const consumeDropdownOpen = ref(false)
 
 const summary = reactive({})
 const customers = ref([])
+const allCustomers = ref([])
 const employees = ref([])
 const services = ref([])
 const transactions = ref([])
@@ -544,6 +581,8 @@ const auditLogs = ref([])
 const performance = ref([])
 const serviceBreakdown = ref([])
 const balanceMap = reactive({})
+const customerVerifyVisible = reactive({})
+const accessInfo = reactive({ ip: '', port: '', url: '' })
 const customerPager = reactive({ page: 1, size: 8, total: 0, totalPages: 1 })
 const employeePager = reactive({ page: 1, size: 8, total: 0, totalPages: 1 })
 const transactionPager = reactive({ page: 1, size: 8, total: 0, totalPages: 1 })
@@ -565,7 +604,7 @@ const rechargeForm = reactive({ customerId: '', amount: '', remark: '' })
 const consumeForm = reactive({ customerId: '', employeeId: '', serviceTypeId: '', amount: '', verifyCode: '', remark: '' })
 const serviceForm = reactive({ id: '', name: '', price: '' })
 
-const activeCustomers = computed(() => customers.value.filter((c) => c.status === 'active'))
+const activeCustomers = computed(() => allCustomers.value.filter((c) => c.status === 'active'))
 const activeEmployees = computed(() => employees.value.filter((e) => e.status === 'active'))
 const activeServices = computed(() => services.value.filter((s) => s.status === 'active'))
 const rechargeCandidateCustomers = computed(() => {
@@ -750,8 +789,9 @@ async function loadSummary() {
 }
 
 async function loadCustomers() {
+  const kw = (customerListKeyword.value || (activeNav.value === 'customers' ? keyword.value : '')).trim()
   const data = await api(
-    `/api/customers?keyword=${encodeURIComponent(keyword.value)}&page=${customerPager.page}&size=${customerPager.size}`
+    `/api/customers?keyword=${encodeURIComponent(kw)}&page=${customerPager.page}&size=${customerPager.size}`
   )
   customers.value = data.items || []
   customerPager.page = data.page || 1
@@ -759,9 +799,26 @@ async function loadCustomers() {
   customerPager.total = data.total || 0
   customerPager.totalPages = data.totalPages || 1
   for (const c of customers.value) {
+    if (customerVerifyVisible[c.id] == null) customerVerifyVisible[c.id] = false
+  }
+  for (const c of customers.value) {
     const b = await api(`/api/accounts/${c.id}/balance`)
     balanceMap[c.id] = b.balance
   }
+}
+
+async function loadAllCustomersForSelect() {
+  const size = 100
+  let page = 1
+  let totalPages = 1
+  const all = []
+  do {
+    const data = await api(`/api/customers?keyword=&page=${page}&size=${size}`)
+    all.push(...(data.items || []))
+    totalPages = data.totalPages || 1
+    page += 1
+  } while (page <= totalPages)
+  allCustomers.value = all
 }
 
 async function loadEmployees() {
@@ -801,9 +858,13 @@ async function loadReports() {
   serviceBreakdown.value = await api(`/api/reports/service-breakdown?${q}`)
 }
 
+async function loadAccessInfo() {
+  Object.assign(accessInfo, await api('/api/system/access-info'))
+}
+
 async function refreshAll() {
   try {
-    await Promise.all([loadSummary(), loadCustomers(), loadEmployees(), loadServices(), loadTransactions(), loadAudit(), loadReports()])
+    await Promise.all([loadSummary(), loadCustomers(), loadAllCustomersForSelect(), loadEmployees(), loadServices(), loadTransactions(), loadAudit(), loadReports(), loadAccessInfo()])
   } catch (e) {
     notify(e.message)
   }
@@ -869,6 +930,10 @@ function editCustomer(c) {
   customerForm.initialRechargeAmount = ''
   customerForm.remark = c.remark
   autoVerifyCode.value = ''
+}
+
+function toggleVerifyCode(id) {
+  customerVerifyVisible[id] = !customerVerifyVisible[id]
 }
 
 async function toggleCustomer(id) {
@@ -1144,6 +1209,14 @@ watch(
     if (activeNav.value === 'employees') loadEmployees()
     if (activeNav.value === 'transactions') loadTransactions()
     if (activeNav.value === 'audit') loadAudit()
+  }
+)
+
+watch(
+  () => customerListKeyword.value,
+  () => {
+    customerPager.page = 1
+    if (activeNav.value === 'customers') loadCustomers()
   }
 )
 
@@ -1559,6 +1632,15 @@ textarea {
   min-height: 0;
 }
 
+.customers-section {
+  grid-template-columns: 1fr;
+  align-content: start;
+}
+
+.list-filter-row {
+  margin-bottom: 10px;
+}
+
 .list-section {
   flex: 1;
   overflow: auto;
@@ -1571,6 +1653,17 @@ textarea {
 }
 
 .list-card .table-wrap {
+  flex: 1;
+  min-height: 0;
+}
+
+.audit-section {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.audit-section .table-wrap {
   flex: 1;
   min-height: 0;
 }
@@ -1640,6 +1733,39 @@ textarea {
 table {
   width: 100%;
   border-collapse: collapse;
+}
+
+.customer-table {
+  table-layout: fixed;
+}
+
+.customer-table th,
+.customer-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audit-table {
+  table-layout: fixed;
+}
+
+.audit-table th,
+.audit-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transaction-table {
+  table-layout: fixed;
+}
+
+.transaction-table th,
+.transaction-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 th,
@@ -1869,6 +1995,33 @@ th {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.help-access-tip {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+}
+
+.help-access-title {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: #047857;
+  margin-bottom: 4px;
+}
+
+.help-access-desc {
+  color: #065f46;
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.help-access-desc code {
+  background: #d1fae5;
+  border-radius: 4px;
+  padding: 2px 6px;
 }
 
 .help-item {
